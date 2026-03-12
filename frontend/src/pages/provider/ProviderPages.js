@@ -1,4 +1,8 @@
 import React, { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { Loader2 } from "lucide-react";
+// ... other imports
+
 import { Link } from "react-router-dom";
 import {
   Plus,
@@ -360,51 +364,107 @@ export const ProviderServicesPage = () => {
 
 // ─── Provider Bookings Page ───────────────────────────────────────────────────
 export const ProviderBookingsPage = () => {
-  const [bookings, setBookings] = useState(MOCK_PROVIDER_BOOKINGS);
+  const { user } = useAuth(); // Get the logged-in provider
+  const [bookings, setBookings] = useState([]);
   const [activeTab, setActiveTab] = useState("all");
+  const [loading, setLoading] = useState(true);
 
-  const filtered =
-    activeTab === "all"
-      ? bookings
-      : bookings.filter((b) => b.status === activeTab);
+  // 1. Fetch Provider Bookings
+  useEffect(() => {
+    const fetchBookings = async () => {
+      if (!user?.id) return;
+      try {
+        setLoading(true);
+        // Fetch raw bookings from the backend
+        const res = await api.get(`/bookings/provider/${user.id}`);
+        const rawBookings = res.data;
 
-  const updateStatus = (id, status) => {
-    setBookings(bookings.map((b) => (b.id === id ? { ...b, status } : b)));
+        // Fetch service details for each booking to get the Name and Price
+        const enhancedBookings = await Promise.all(
+          rawBookings.map(async (booking) => {
+            try {
+              const serviceRes = await api.get(`/services/${booking.serviceId}`);
+              return {
+                id: booking.id,
+                customer: `Customer ID #${booking.customerId}`, // Fallback since Booking DB doesn't store customer name
+                service: `${serviceRes.data.category} - ${serviceRes.data.subcategory}`,
+                date: booking.bookingDate,
+                timeSlot: booking.timeSlot,
+                status: booking.status.toLowerCase(),
+                price: serviceRes.data.price || 0,
+                address: "Contact customer for exact address", // DB doesn't store address on booking yet
+              };
+            } catch (err) {
+              return { ...booking, customer: "Unknown", service: "Unavailable", price: 0 };
+            }
+          })
+        );
+
+        // Sort by newest first
+        enhancedBookings.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setBookings(enhancedBookings);
+      } catch (err) {
+        console.error("Failed to fetch provider bookings:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBookings();
+  }, [user]);
+
+  const filtered = activeTab === "all" ? bookings : bookings.filter((b) => b.status === activeTab);
+
+  // 2. Handle Status Updates (Accept, Decline, Complete)
+  const updateStatus = async (id, newStatus, endpoint) => {
+    try {
+      // Call the specific backend endpoint your teammate created
+      if (endpoint === 'accept') {
+        await api.put(`/bookings/accept/${id}`);
+      } else if (endpoint === 'reject') {
+        await api.put(`/bookings/reject/${id}`);
+      } else {
+        await api.put(`/bookings/update/${id}?status=${newStatus}`);
+      }
+      
+      // Update UI instantly
+      setBookings(bookings.map((b) => (b.id === id ? { ...b, status: newStatus } : b)));
+    } catch (err) {
+      console.error(`Failed to update booking to ${newStatus}:`, err);
+      alert("Failed to update booking status. Please try again.");
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-brand-400 animate-spin mb-3" />
+        <p className="text-dark-400">Loading your requests...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <SectionHeader
-        title="Booking Requests"
-        subtitle="Manage your incoming and active bookings"
-      />
+      <SectionHeader title="Booking Requests" subtitle="Manage your incoming and active bookings" />
 
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {["all", "pending", "confirmed", "completed", "cancelled"].map(
-          (tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 capitalize ${
-                activeTab === tab
-                  ? "bg-brand-500 text-white"
-                  : "bg-dark-800 text-dark-400 border border-dark-700 hover:text-white"
-              }`}
-            >
-              {tab}
-              <span
-                className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab ? "bg-white/20" : "bg-dark-700 text-dark-400"}`}
-              >
-                {
-                  (tab === "all"
-                    ? bookings
-                    : bookings.filter((b) => b.status === tab)
-                  ).length
-                }
-              </span>
-            </button>
-          ),
-        )}
+        {["all", "pending", "confirmed", "completed", "cancelled"].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 capitalize ${
+              activeTab === tab
+                ? "bg-brand-500 text-white"
+                : "bg-dark-800 text-dark-400 border border-dark-700 hover:text-white"
+            }`}
+          >
+            {tab}
+            <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${activeTab === tab ? "bg-white/20" : "bg-dark-700 text-dark-400"}`}>
+              {(tab === "all" ? bookings : bookings.filter((b) => b.status === tab)).length}
+            </span>
+          </button>
+        ))}
       </div>
 
       <div className="space-y-4">
@@ -415,55 +475,41 @@ export const ProviderBookingsPage = () => {
           </div>
         ) : (
           filtered.map((booking) => (
-            <div
-              key={booking.id}
-              className="bg-dark-800 border border-dark-700 rounded-2xl p-5 hover:border-dark-600 transition-all"
-            >
+            <div key={booking.id} className="bg-dark-800 border border-dark-700 rounded-2xl p-5 hover:border-dark-600 transition-all">
               <div className="flex items-start gap-4 flex-wrap">
                 <div className="flex-1">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
-                      <h4 className="font-semibold text-white">
-                        {booking.customer}
-                      </h4>
+                      <h4 className="font-semibold text-white">{booking.customer}</h4>
                       <p className="text-dark-400 text-sm">{booking.service}</p>
                     </div>
                     <StatusBadge status={booking.status} />
                   </div>
                   <div className="flex items-center gap-4 mt-2 flex-wrap text-sm text-dark-400">
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="w-4 h-4 text-brand-400" />{" "}
-                      {booking.date}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-blue-400" />{" "}
-                      {booking.timeSlot}
-                    </span>
+                    <span className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-brand-400" /> {booking.date}</span>
+                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-blue-400" /> {booking.timeSlot}</span>
                     <span>📍 {booking.address}</span>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <p className="font-bold text-brand-400 text-lg">
-                    ₹{booking.price}
-                  </p>
-                  <Link
-                    to="/provider/chat"
-                    className="p-2 rounded-xl bg-dark-700 hover:bg-dark-600 text-dark-300 transition-colors"
-                  >
+                  <p className="font-bold text-brand-400 text-lg">₹{booking.price}</p>
+                  <Link to="/provider/chat" className="p-2 rounded-xl bg-dark-700 hover:bg-dark-600 text-dark-300 transition-colors">
                     <MessageCircle className="w-4 h-4" />
                   </Link>
                 </div>
               </div>
+              
+              {/* Dynamic Action Buttons based on Status */}
               {booking.status === "pending" && (
                 <div className="flex gap-3 mt-4 pt-4 border-t border-dark-700">
                   <button
-                    onClick={() => updateStatus(booking.id, "confirmed")}
+                    onClick={() => updateStatus(booking.id, "confirmed", "accept")}
                     className="flex-1 py-2.5 rounded-xl bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 transition-all font-medium text-sm"
                   >
                     ✓ Accept Booking
                   </button>
                   <button
-                    onClick={() => updateStatus(booking.id, "cancelled")}
+                    onClick={() => updateStatus(booking.id, "cancelled", "reject")}
                     className="flex-1 py-2.5 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all font-medium text-sm"
                   >
                     ✗ Decline
@@ -472,7 +518,7 @@ export const ProviderBookingsPage = () => {
               )}
               {booking.status === "confirmed" && (
                 <button
-                  onClick={() => updateStatus(booking.id, "completed")}
+                  onClick={() => updateStatus(booking.id, "completed", "update")}
                   className="w-full mt-4 py-2.5 rounded-xl bg-brand-500/20 text-brand-400 border border-brand-500/30 hover:bg-brand-500 hover:text-white transition-all font-medium text-sm"
                 >
                   Mark as Completed ✓

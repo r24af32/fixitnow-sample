@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useAuth } from "../../context/AuthContext"; // Add this line
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -57,8 +58,10 @@ const REVIEWS = [
 export const ServiceDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [service, setService] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const loadService = async () => {
@@ -68,6 +71,10 @@ export const ServiceDetailPage = () => {
 
         const res = await api.get(`/services/${id}`);
         const normalized = normalizeServiceCategoryFields(res.data, lookup);
+        
+        //  THE FIX: Capture the raw provider ID directly from the backend response!
+        normalized.exactProviderId = res.data.provider?.id || res.data.providerId || res.data.provider_id;
+        
         setService(normalized);
       } catch (err) {
         console.error(err);
@@ -89,11 +96,35 @@ export const ServiceDetailPage = () => {
     setBookingModal(true);
   };
 
-  const confirmBooking = () => {
-    setConfirmed(true);
-    setTimeout(() => navigate("/customer/bookings"), 2000);
-  };
+const confirmBooking = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      // 1. Build the payload. Because of your backend fix, service.providerId now works perfectly!
+      const bookingPayload = {
+        serviceId: service.id,
+        customerId: user.id,
+        providerId: service.providerId, // 🌟 Clean, simple, and guaranteed to work
+        bookingDate: selectedDate,
+        timeSlot: selectedSlot
+      };
 
+      console.log("Sending clean payload:", bookingPayload);
+
+      // 2. Send the POST request to the backend
+      await api.post('/bookings/create', bookingPayload);
+
+      // 3. Show the success UI
+      setConfirmed(true);
+      setTimeout(() => navigate("/customer/bookings"), 2000);
+      
+    } catch (err) {
+      console.error("Booking failed:", err);
+      alert(err.response?.data?.message || err.response?.data || "Failed to create booking.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   const today = new Date().toISOString().split("T")[0];
   const maxDate = new Date();
   maxDate.setDate(maxDate.getDate() + 30);
@@ -392,8 +423,12 @@ export const ServiceDetailPage = () => {
               >
                 Cancel
               </button>
-              <button onClick={confirmBooking} className="btn-primary flex-1">
-                Pay & Confirm
+              <button
+                onClick={confirmBooking}
+                className="btn-primary flex-1 disabled:opacity-50"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Processing..." : "Pay & Confirm"}
               </button>
             </div>
           </div>

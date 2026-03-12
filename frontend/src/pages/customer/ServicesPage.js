@@ -267,8 +267,7 @@ export const ServicesPage = () => {
       {showFilters && (
         <div className="bg-dark-800 border border-dark-700 p-4 rounded-xl mt-3 animate-fade-in">
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-            {" "}
-            {/* Changed to sm:grid-cols-4 */}
+            
             {/* Sort Dropdown */}
             <div>
               <label className="text-xs text-dark-400 font-medium mb-1.5 block">
@@ -285,6 +284,7 @@ export const ServicesPage = () => {
                 <option value="distance">Nearest First</option>
               </select>
             </div>
+
             {/* Price Slider */}
             <div>
               <label className="text-xs text-dark-400 font-medium mb-1.5 block">
@@ -300,6 +300,7 @@ export const ServicesPage = () => {
                 className="w-full accent-brand-500"
               />
             </div>
+
             {/* Verified Toggle */}
             <div className="flex items-center h-10">
               <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-dark-700 w-full transition-colors">
@@ -314,7 +315,8 @@ export const ServicesPage = () => {
                 </span>
               </label>
             </div>
-            {/* NEW: CLEAR ALL BUTTON */}
+
+            {/* CLEAR ALL BUTTON */}
             <div className="flex justify-end h-10">
               <button
                 onClick={handleClearFilters}
@@ -324,6 +326,7 @@ export const ServicesPage = () => {
                 Clear All
               </button>
             </div>
+
           </div>
         </div>
       )}
