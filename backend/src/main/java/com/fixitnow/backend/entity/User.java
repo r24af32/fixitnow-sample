@@ -3,7 +3,6 @@ package com.fixitnow.backend.entity;
 import jakarta.persistence.*;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fixitnow.backend.entity.ProviderProfile;
 
 @Entity
 @Table(name = "users")
@@ -18,6 +17,7 @@ public class User {
     @Column(unique = true)
     private String email;
 
+    @JsonIgnore
     private String password;
 
     private String location;
